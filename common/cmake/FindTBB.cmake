@@ -13,6 +13,7 @@
 ## See the License for the specific language governing permissions and      ##
 ## limitations under the License.                                           ##
 ## ======================================================================== ##
+set(EMBREE_TBB_STATIC_LIB_ROOT "" CACHE STRING "Build TBB as a static library (building TBB as a static library is NOT recommended)")
 
 IF (NOT TBB_ROOT)
   SET(TBB_ROOT $ENV{TBB_ROOT})
@@ -35,15 +36,15 @@ IF (WIN32)
     DOC "Root of TBB installation"
     PATHS ${PROJECT_SOURCE_DIR}/tbb
     NO_DEFAULT_PATH
-  )
+    )
   FIND_PATH(EMBREE_TBB_ROOT include/tbb/tbb.h
     HINTS ${TBB_ROOT}
     PATHS
-      ${PROJECT_SOURCE_DIR}/../tbb
-      "${PROGRAMFILES32}/IntelSWTools/compilers_and_libraries/windows/tbb"
-      "${PROGRAMFILES32}/Intel/Composer XE/tbb"
-      "${PROGRAMFILES32}/Intel/compilers_and_libraries/windows/tbb"
-  )
+    ${PROJECT_SOURCE_DIR}/../tbb
+    "${PROGRAMFILES32}/IntelSWTools/compilers_and_libraries/windows/tbb"
+    "${PROGRAMFILES32}/Intel/Composer XE/tbb"
+    "${PROGRAMFILES32}/Intel/compilers_and_libraries/windows/tbb"
+    )
 
   IF (CMAKE_SIZEOF_VOID_P EQUAL 8)
     SET(TBB_ARCH intel64)
@@ -83,38 +84,31 @@ ELSE ()
     DOC "Root of TBB installation"
     PATHS ${PROJECT_SOURCE_DIR}/tbb
     NO_DEFAULT_PATH
-  )
+    )
   FIND_PATH(EMBREE_TBB_ROOT include/tbb/tbb.h
     DOC "Root of TBB installation"
     HINTS ${TBB_ROOT}
     PATHS
-      ${PROJECT_SOURCE_DIR}/tbb
-      /opt/intel/composerxe/tbb
-      /opt/intel/compilers_and_libraries/tbb
-      /opt/intel/tbb
-  )
+    ${PROJECT_SOURCE_DIR}/tbb
+    /opt/intel/composerxe/tbb
+    /opt/intel/compilers_and_libraries/tbb
+    /opt/intel/tbb
+    )
 
-  IF (EMBREE_TBB_ROOT STREQUAL "")
+  IF (NOT EMBREE_TBB_STATIC_LIB_ROOT STREQUAL "")
+    FIND_PATH(TBB_INCLUDE_DIR tbb/task_scheduler_init.h PATHS ${EMBREE_TBB_ROOT}/include NO_DEFAULT_PATH)
+    SET(TBB_LIBRARY ${EMBREE_TBB_STATIC_LIB_ROOT}/libtbb_static.a)
+    SET(TBB_LIBRARY_MALLOC ${EMBREE_TBB_STATIC_LIB_ROOT}/libtbbmalloc_static.a)
+  ELSEIF (EMBREE_TBB_ROOT STREQUAL "")
     FIND_PATH(TBB_INCLUDE_DIR tbb/task_scheduler_init.h)
     FIND_LIBRARY(TBB_LIBRARY tbb)
     FIND_LIBRARY(TBB_LIBRARY_MALLOC tbbmalloc)
-    
   ELSEIF (EXISTS ${EMBREE_TBB_ROOT}/cmake/TBBBuild.cmake AND EXISTS ${EMBREE_TBB_ROOT}/src/tbb/tbb_version.h)
-    OPTION(EMBREE_TBB_STATIC_LIB "Build TBB as a static library (building TBB as a static library is NOT recommended)")
-    if (EMBREE_TBB_STATIC_LIB)
-      include(${EMBREE_TBB_ROOT}/cmake/TBBBuild.cmake)
-      tbb_build(TBB_ROOT ${EMBREE_TBB_ROOT} CONFIG_DIR TBB_DIR MAKE_ARGS extra_inc=big_iron.inc)
-      SET(TBB_INCLUDE_DIR ${EMBREE_TBB_ROOT}/include)
-      SET(TBB_LIBRARY ${PROJECT_BINARY_DIR}/tbb_cmake_build/tbb_cmake_build_subdir_release/libtbb.a)
-      SET(TBB_LIBRARY_MALLOC ${PROJECT_BINARY_DIR}/tbb_cmake_build/tbb_cmake_build_subdir_release/libtbbmalloc.a)
-    else()
-      include(${EMBREE_TBB_ROOT}/cmake/TBBBuild.cmake)
-      tbb_build(TBB_ROOT ${EMBREE_TBB_ROOT} CONFIG_DIR TBB_DIR)
-      SET(TBB_INCLUDE_DIR ${EMBREE_TBB_ROOT}/include)
-      SET(TBB_LIBRARY ${PROJECT_BINARY_DIR}/tbb_cmake_build/tbb_cmake_build_subdir_release/libtbb.so.2)
-      SET(TBB_LIBRARY_MALLOC ${PROJECT_BINARY_DIR}/tbb_cmake_build/tbb_cmake_build_subdir_release/libtbbmalloc.so.2)
-    endif()
-    
+    include(${EMBREE_TBB_ROOT}/cmake/TBBBuild.cmake)
+    tbb_build(TBB_ROOT ${EMBREE_TBB_ROOT} CONFIG_DIR TBB_DIR)
+    SET(TBB_INCLUDE_DIR ${EMBREE_TBB_ROOT}/include)
+    SET(TBB_LIBRARY ${PROJECT_BINARY_DIR}/tbb_cmake_build/tbb_cmake_build_subdir_release/libtbb.so.2)
+    SET(TBB_LIBRARY_MALLOC ${PROJECT_BINARY_DIR}/tbb_cmake_build/tbb_cmake_build_subdir_release/libtbbmalloc.so.2)
   ELSE()
     SET(TBB_INCLUDE_DIR TBB_INCLUDE_DIR-NOTFOUND)
     SET(TBB_LIBRARY TBB_LIBRARY-NOTFOUND)
@@ -130,7 +124,6 @@ ELSE ()
       FIND_LIBRARY(TBB_LIBRARY_MALLOC tbbmalloc ${TBB_HINTS})
     ENDIF()
   ENDIF()
-
 ENDIF()
 
 INCLUDE(FindPackageHandleStandardArgs)
