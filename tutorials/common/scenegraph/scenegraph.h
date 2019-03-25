@@ -18,6 +18,7 @@
 
 #include "lights.h"
 #include "../../../include/embree3/rtcore.h"
+RTC_NAMESPACE_OPEN
 #include "../math/random_sampler.h"
 
 namespace embree
@@ -39,6 +40,7 @@ namespace embree
     void optimize_animation(Ref<Node> node0);
     void set_motion_vector(Ref<Node> node, const Vec3fa& dP);
     void set_motion_vector(Ref<Node> node, const avector<Vec3fa>& motion_vector);
+    void set_time_range(Ref<SceneGraph::Node> node, const BBox1f& time_range);
     void resize_randomly(RandomSampler& sampler, Ref<Node> node, const size_t N);
     Ref<Node> convert_triangles_to_quads(Ref<Node> node, float prop);
     Ref<Node> convert_triangles_to_quads( Ref<TriangleMeshNode> tmesh);
@@ -56,6 +58,7 @@ namespace embree
     Ref<Node> convert_grids_to_quads( Ref<Node> node);
 
     Ref<Node> remove_mblur(Ref<Node> node, bool mblur);
+    void convert_mblur_to_nonmblur(Ref<Node> node);
 
     struct Statistics
     {
@@ -65,7 +68,8 @@ namespace embree
         numSubdivMeshes(0),   numPatches(0),   numSubdivBytes(0),
         numCurveSets(0),      numCurves(0),    numCurveBytes(0),
         numGridMeshNodes(0),  numGrids(0),     numGridBytes(0),
-        numTransformNodes(0), 
+        numPointSets(0),      numPoints(0),    numPointBytes(0),
+        numTransformNodes(0),
         numTransformedObjects(0),
         numLights(0),
         numCameras(0),
@@ -93,6 +97,10 @@ namespace embree
       size_t numGrids;
       size_t numGridBytes;
       
+      size_t numPointSets;
+      size_t numPoints;
+      size_t numPointBytes;
+
       size_t numTransformNodes;
       size_t numTransformedObjects;
       
@@ -164,24 +172,30 @@ namespace embree
     {
       __forceinline Transformations() {}
 
-      __forceinline Transformations(OneTy) {
+      __forceinline Transformations(OneTy)
+        : time_range(0.0f,1.0f)
+      {
         spaces.push_back(one);
       }
 
-      __forceinline Transformations( size_t N ) 
-        : spaces(N) {}
+      __forceinline Transformations( const BBox1f& time_range, size_t N ) 
+        : time_range(time_range), spaces(N) {}
       
-      __forceinline Transformations(const AffineSpace3fa& space) {
+      __forceinline Transformations(const AffineSpace3fa& space)
+        : time_range(0.0f,1.0f)
+      {
         spaces.push_back(space);
       }
 
-      __forceinline Transformations(const AffineSpace3fa& space0, const AffineSpace3fa& space1) {
+      __forceinline Transformations(const AffineSpace3fa& space0, const AffineSpace3fa& space1)
+        : time_range(0.0f,1.0f)
+      {
         spaces.push_back(space0);
         spaces.push_back(space1);
       }
 
       __forceinline Transformations(const avector<AffineSpace3fa>& spaces)
-        : spaces(spaces) { assert(spaces.size()); }
+        : time_range(0.0f,1.0f), spaces(spaces) { assert(spaces.size()); }
 
       __forceinline size_t size() const {
         return spaces.size();
@@ -225,19 +239,19 @@ namespace embree
       {
         if (a.size() == 1) 
         {
-          Transformations c(b.size());
+          Transformations c(intersect(a.time_range,b.time_range),b.size());
           for (size_t i=0; i<b.size(); i++) c[i] = a[0] * b[i];
           return c;
         } 
         else if (b.size() == 1) 
         {
-          Transformations c(a.size());
+          Transformations c(intersect(a.time_range,b.time_range),a.size());
           for (size_t i=0; i<a.size(); i++) c[i] = a[i] * b[0];
           return c;
         }
         else if (a.size() == b.size())
         {
-          Transformations c(a.size());
+          Transformations c(intersect(a.time_range,b.time_range),a.size());
           for (size_t i=0; i<a.size(); i++) c[i] = a[i] * b[i];
           return c;
         }
@@ -247,6 +261,7 @@ namespace embree
 
       AffineSpace3fa interpolate (const float gtime) const
       {
+        assert(time_range.lower == 0.0f && time_range.upper == 1.0f);
         if (spaces.size() == 1) return spaces[0];
 
         /* calculate time segment itime and fractional time ftime */
@@ -258,6 +273,7 @@ namespace embree
       }
 
     public:
+      BBox1f time_range;
       avector<AffineSpace3fa> spaces;
     };
 
@@ -616,23 +632,22 @@ namespace embree
                         const std::vector<Vec2f>& texcoords,
                         const std::vector<Triangle>& triangles,
                         Ref<MaterialNode> material) 
-        : Node(true), texcoords(texcoords), triangles(triangles), material(material) 
+        : Node(true), time_range(0.0f,1.0f), texcoords(texcoords), triangles(triangles), material(material) 
       {
         positions.push_back(positions_in);
         normals.push_back(normals_in);
       }
 
-      TriangleMeshNode (Ref<MaterialNode> material, size_t numTimeSteps = 0) 
-        : Node(true), material(material) 
+      TriangleMeshNode (Ref<MaterialNode> material, const BBox1f time_range = BBox1f(0,1), size_t numTimeSteps = 0) 
+        : Node(true), time_range(time_range), material(material) 
       {
         for (size_t i=0; i<numTimeSteps; i++)
           positions.push_back(avector<Vertex>());
-        for (size_t i=0; i<numTimeSteps; i++)
-          normals.push_back(avector<Vertex>());
       }
 
       TriangleMeshNode (Ref<SceneGraph::TriangleMeshNode> imesh, const Transformations& spaces)
         : Node(true),
+          time_range(imesh->time_range),
           positions(transformMSMBlurBuffer(imesh->positions,spaces)),
           normals(transformMSMBlurNormalBuffer(imesh->normals,spaces)),
           texcoords(imesh->texcoords), triangles(imesh->triangles), material(imesh->material) {}
@@ -685,6 +700,7 @@ namespace embree
       virtual void resetInDegree();
       
     public:
+      BBox1f time_range;
       std::vector<avector<Vertex>> positions;
       std::vector<avector<Vertex>> normals;
       std::vector<Vec2f> texcoords;
@@ -708,17 +724,16 @@ namespace embree
       };
       
     public:
-      QuadMeshNode (Ref<MaterialNode> material, size_t numTimeSteps = 0) 
-        : Node(true), material(material) 
+      QuadMeshNode (Ref<MaterialNode> material, const BBox1f time_range = BBox1f(0,1), size_t numTimeSteps = 0 ) 
+        : Node(true), time_range(time_range), material(material) 
       {
         for (size_t i=0; i<numTimeSteps; i++)
           positions.push_back(avector<Vertex>());
-        for (size_t i=0; i<numTimeSteps; i++)
-          normals.push_back(avector<Vertex>());
       }
 
       QuadMeshNode (Ref<SceneGraph::QuadMeshNode> imesh, const Transformations& spaces)
         : Node(true),
+          time_range(imesh->time_range),
           positions(transformMSMBlurBuffer(imesh->positions,spaces)),
           normals(transformMSMBlurNormalBuffer(imesh->normals,spaces)),
           texcoords(imesh->texcoords), quads(imesh->quads), material(imesh->material) {}
@@ -771,6 +786,7 @@ namespace embree
       virtual void resetInDegree();
             
     public:
+      BBox1f time_range;
       std::vector<avector<Vertex>> positions;
       std::vector<avector<Vertex>> normals;
       std::vector<Vec2f> texcoords;
@@ -783,8 +799,9 @@ namespace embree
     {
       typedef Vec3fa Vertex;
 
-      SubdivMeshNode (Ref<MaterialNode> material, size_t numTimeSteps = 0) 
-        : Node(true), 
+      SubdivMeshNode (Ref<MaterialNode> material, const BBox1f time_range = BBox1f(0,1), size_t numTimeSteps = 0) 
+        : Node(true),
+          time_range(time_range),
           position_subdiv_mode(RTC_SUBDIVISION_MODE_SMOOTH_BOUNDARY), 
           normal_subdiv_mode(RTC_SUBDIVISION_MODE_SMOOTH_BOUNDARY),
           texcoord_subdiv_mode(RTC_SUBDIVISION_MODE_SMOOTH_BOUNDARY),
@@ -792,13 +809,12 @@ namespace embree
       {
         for (size_t i=0; i<numTimeSteps; i++)
           positions.push_back(avector<Vertex>());
-        for (size_t i=0; i<numTimeSteps; i++)
-          normals.push_back(avector<Vertex>());
         zero_pad_arrays();
       }
 
       SubdivMeshNode (Ref<SceneGraph::SubdivMeshNode> imesh, const Transformations& spaces)
-        : Node(true), 
+        : Node(true),
+        time_range(imesh->time_range),
         positions(transformMSMBlurBuffer(imesh->positions,spaces)),
         normals(transformMSMBlurNormalBuffer(imesh->normals,spaces)),
         texcoords(imesh->texcoords),
@@ -885,6 +901,7 @@ namespace embree
       virtual void resetInDegree();
 
     public:
+      BBox1f time_range;                      //!< geometry time range for motion blur
       std::vector<avector<Vertex>> positions; //!< vertex positions for multiple timesteps
       std::vector<avector<Vertex>> normals;    //!< vertex normals
       std::vector<Vec2f> texcoords;             //!< face texture coordinates
@@ -920,21 +937,27 @@ namespace embree
       };
       
     public:
-      HairSetNode (RTCGeometryType type, Ref<MaterialNode> material, size_t numTimeSteps = 0)
-        : Node(true), type(type), material(material), tessellation_rate(4)
+      HairSetNode (RTCGeometryType type, Ref<MaterialNode> material, const BBox1f time_range = BBox1f(0,1), size_t numTimeSteps = 0)
+        : Node(true), time_range(time_range), type(type), material(material), tessellation_rate(4)
       {
         for (size_t i=0; i<numTimeSteps; i++)
           positions.push_back(avector<Vertex>());
       }
 
       HairSetNode (const avector<Vertex>& positions_in, const std::vector<Hair>& hairs, Ref<MaterialNode> material, RTCGeometryType type)
-        : Node(true), type(type), hairs(hairs), material(material), tessellation_rate(4)
+        : Node(true), time_range(0.0f,1.0f), type(type), hairs(hairs), material(material), tessellation_rate(4)
       {
         positions.push_back(positions_in);
       }
    
       HairSetNode (Ref<SceneGraph::HairSetNode> imesh, const Transformations& spaces)
-        : Node(true), type(imesh->type), positions(transformMSMBlurBuffer(imesh->positions,spaces)), normals(transformMSMBlurNormalBuffer(imesh->normals,spaces)), tangents(transformMSMBlurVectorBuffer(imesh->tangents,spaces)),
+        : Node(true),
+        time_range(imesh->time_range),
+        type(imesh->type),
+        positions(transformMSMBlurBuffer(imesh->positions,spaces)),
+        normals(transformMSMBlurNormalBuffer(imesh->normals,spaces)),
+        tangents(transformMSMBlurVectorBuffer(imesh->tangents,spaces)),
+        dnormals(transformMSMBlurVectorBuffer(imesh->dnormals,spaces)),
         hairs(imesh->hairs), flags(imesh->flags), material(imesh->material), tessellation_rate(imesh->tessellation_rate) {}
 
       virtual void setMaterial(Ref<MaterialNode> material) {
@@ -990,15 +1013,98 @@ namespace embree
       virtual void resetInDegree();
 
     public:
+      BBox1f time_range;                      //!< geometry time range for motion blur
       RTCGeometryType type;                   //!< type of curve
       std::vector<avector<Vertex>> positions; //!< hair control points (x,y,z,r) for multiple timesteps
       std::vector<avector<Vertex>> normals;   //!< hair control normals (nx,ny,nz) for multiple timesteps
       std::vector<avector<Vertex>> tangents;  //!< hair control tangents (tx,ty,tz,tr) for multiple timesteps
+      std::vector<avector<Vertex>> dnormals;  //!< hair control normal derivatives (nx,ny,nz) for multiple timesteps
       std::vector<Hair> hairs;                //!< list of hairs
       std::vector<unsigned char> flags;       //!< left, right end cap flags
 
       Ref<MaterialNode> material;
       unsigned tessellation_rate;
+    };
+
+    /*! Point Set. */
+    struct PointSetNode : public Node
+    {
+      typedef Vec3fa Vertex;
+
+    public:
+      PointSetNode (RTCGeometryType type, Ref<MaterialNode> material, const BBox1f time_range = BBox1f(0,1), size_t numTimeSteps = 0)
+        : Node(true), time_range(time_range), type(type), material(material)
+      {
+        for (size_t i=0; i<numTimeSteps; i++)
+          positions.push_back(avector<Vertex>());
+      }
+
+      PointSetNode (const avector<Vertex>& positions_in, Ref<MaterialNode> material, RTCGeometryType type)
+        : Node(true), time_range(0.0f, 1.0f), type(type), material(material)
+      {
+        positions.push_back(positions_in);
+      }
+
+      PointSetNode (Ref<SceneGraph::PointSetNode> imesh, const Transformations& spaces)
+        : Node(true), time_range(imesh->time_range), type(imesh->type), positions(transformMSMBlurBuffer(imesh->positions,spaces)),
+          normals(transformMSMBlurNormalBuffer(imesh->normals,spaces)),
+        material(imesh->material) {}
+
+      virtual void setMaterial(Ref<MaterialNode> material) {
+        this->material = material;
+      }
+
+      virtual BBox3fa bounds() const
+      {
+        BBox3fa b = empty;
+        for (const auto& p : positions)
+          for (auto x : p)
+            b.extend(x);
+        return b;
+      }
+
+      virtual LBBox3fa lbounds() const
+      {
+        avector<BBox3fa> bboxes(positions.size());
+        for (size_t t=0; t<positions.size(); t++) {
+          BBox3fa b = empty;
+          for (auto x : positions[t])
+            b.extend(x);
+          bboxes[t] = b;
+        }
+        return LBBox3fa(bboxes);
+      }
+
+      virtual size_t numPrimitives() const {
+        return numVertices();
+      }
+
+      size_t numVertices() const {
+        assert(positions.size());
+        return positions[0].size();
+      }
+
+      size_t numTimeSteps() const {
+        return positions.size();
+      }
+
+      size_t numBytes() const {
+        return numVertices()*numTimeSteps()*sizeof(Vertex);
+      }
+
+      void verify() const;
+
+      virtual void calculateStatistics(Statistics& stat);
+      virtual void calculateInDegree();
+      virtual void resetInDegree();
+
+    public:
+      BBox1f time_range;                      //!< geometry time range for motion blur
+      RTCGeometryType type;                   //!< type of point
+      std::vector<avector<Vertex>> positions; //!< point control points (x,y,z,r) for multiple timesteps
+      std::vector<avector<Vertex>> normals;   //!< point control normals (nx,ny,nz) for multiple timesteps (oriented only)
+
+      Ref<MaterialNode> material;
     };
 
     struct GridMeshNode : public Node
@@ -1024,8 +1130,8 @@ namespace embree
       };
       
     public:
-      GridMeshNode (Ref<MaterialNode> material, size_t numTimeSteps = 0) 
-        : Node(true), material(material) 
+      GridMeshNode (Ref<MaterialNode> material, const BBox1f time_range = BBox1f(0,1), size_t numTimeSteps = 0) 
+        : Node(true), time_range(time_range), material(material) 
       {
         for (size_t i=0; i<numTimeSteps; i++)
           positions.push_back(avector<Vertex>());
@@ -1033,6 +1139,7 @@ namespace embree
 
       GridMeshNode (Ref<SceneGraph::GridMeshNode> imesh, const Transformations& spaces)
         : Node(true),
+         time_range(imesh->time_range),
           positions(transformMSMBlurBuffer(imesh->positions,spaces)),
         grids(imesh->grids), material(imesh->material) {}
    
@@ -1084,6 +1191,7 @@ namespace embree
       virtual void resetInDegree();
 
     public:
+      BBox1f time_range;
       std::vector<avector<Vertex>> positions; 
       std::vector<Grid> grids;
       Ref<MaterialNode> material;
@@ -1100,6 +1208,13 @@ namespace embree
     {
       ROUND_CURVE,
       FLAT_CURVE
+    };
+
+    enum PointSubtype
+    {
+      SPHERE,
+      DISC,
+      ORIENTED_DISC
     };
   }
 }

@@ -231,13 +231,18 @@ parameters that can be configured in CMake:
   is ON by default.
 
 + `EMBREE_STATIC_LIB`: Builds Embree as a static library (OFF by
-  default). When using the statically compiled Embree library, you
-  have to define ENABLE_STATIC_LIB before including rtcore.h in your
-  application. Further multiple static libraries are generated for the
+  default). Further multiple static libraries are generated for the
   different ISAs selected (e.g. `embree3.a`, `embree3_sse42.a`,
   `embree3_avx.a`, `embree3_avx2.a`, `embree3_avx512knl.a`,
   `embree3_avx512skx.a`). You have to link these libraries in exactly
   this order of increasing ISA.
+
++ `EMBREE_ISA_NAMESPACE`: Specifies a namespace name to put all Embree
+  API symbols inside. By default no namespace is used and plain C symbols
+  exported.
+
++ `EMBREE_LIBRARY_NAME`: Specifies the name of the Embree library file
+  created. By default the name embree3 is used.
 
 + `EMBREE_IGNORE_CMAKE_CXX_FLAGS`: When enabled, Embree ignores
   default CMAKE_CXX_FLAGS. This option is turned ON by default.
@@ -307,6 +312,16 @@ parameters that can be configured in CMake:
 
 + `EMBREE_GEOMETRY_USER`: Enables support for user defined geometries
   (ON by default).
+
++ `EMBREE_GEOMETRY_POINT`: Enables support for point geometries
+  (ON by default).
+
++ `EMBREE_CURVE_SELF_INTERSECTION_AVOIDANCE_FACTOR`: Specifies a
+  factor that controls the self intersection avoidance feature for flat
+  curves. Flat curve intersections which are closer than
+  curve_radius*`EMBREE_CURVE_SELF_INTERSECTION_AVOIDANCE_FACTOR` to
+  the ray origin are ignored. A value of 0.0f disables self
+  intersection avoidance while 2.0f is the default value.
 
 
 Using Embree

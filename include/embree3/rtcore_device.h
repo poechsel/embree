@@ -18,9 +18,7 @@
 
 #include "rtcore_common.h"
 
-#if defined(__cplusplus)
-extern "C" {
-#endif
+RTC_NAMESPACE_BEGIN
 
 /* Opaque device type */
 typedef struct RTCDeviceTy* RTCDevice;
@@ -57,6 +55,7 @@ enum RTCDeviceProperty
   RTC_DEVICE_PROPERTY_SUBDIVISION_GEOMETRY_SUPPORTED = 98,
   RTC_DEVICE_PROPERTY_CURVE_GEOMETRY_SUPPORTED       = 99,
   RTC_DEVICE_PROPERTY_USER_GEOMETRY_SUPPORTED        = 100,
+  RTC_DEVICE_PROPERTY_POINT_GEOMETRY_SUPPORTED       = 101,
 
   RTC_DEVICE_PROPERTY_TASKING_SYSTEM        = 128,
   RTC_DEVICE_PROPERTY_JOIN_COMMIT_SUPPORTED = 129
@@ -95,6 +94,4 @@ typedef bool (*RTCMemoryMonitorFunction)(void* ptr, ssize_t bytes, bool post);
 /* Sets the memory monitor callback function. */
 RTC_API void rtcSetDeviceMemoryMonitorFunction(RTCDevice device, RTCMemoryMonitorFunction memoryMonitor, void* userPtr);
 
-#if defined(__cplusplus)
-}
-#endif
+RTC_NAMESPACE_END

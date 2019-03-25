@@ -28,6 +28,7 @@ struct Triangle { int v0, v1, v2; };
 
 /* include embree API */
 #include "../../../include/embree3/rtcore.h"
+RTC_NAMESPACE_OPEN
 
 /* include optional vector library */
 #include "../math/math.h"
@@ -117,22 +118,6 @@ unsigned int getNumHWThreads();
 #define ALIGNED_STRUCT_(x)
 #define __aligned(x)
 #define MAYBE_UNUSED
-#endif
-
-struct Sample3f
-{
-  Vec3fa v;
-  float pdf;
-};
-
-inline Sample3f make_Sample3f(const Vec3fa& v, const float pdf) {
-  Sample3f s; s.v = v; s.pdf = pdf; return s;
-}
-
-#if defined(ISPC)
-inline Sample3f make_Sample3f(const Vec3fa& v, const float pdf) {
-  Sample3f s; s.v = v; s.pdf = pdf; return s;
-}
 #endif
 
 /* draws progress bar */

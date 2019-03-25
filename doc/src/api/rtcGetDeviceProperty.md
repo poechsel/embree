@@ -10,7 +10,7 @@
 
     ssize_t rtcGetDeviceProperty(
       RTCDevice device,
-      RTCDeviceProperty prop
+      enum RTCDeviceProperty prop
     );
 
 #### DESCRIPTION
@@ -93,6 +93,10 @@ Possible properties to query are:
     curves are supported, which is the case if Embree is compiled
     with `EMBREE_GEOMETRY_CURVE` enabled.
 
++   `RTC_DEVICE_PROPERTY_POINT_GEOMETRY_SUPPORTED`: Queries whether
+    points are supported, which is the case if Embree is compiled
+    with `EMBREE_GEOMETRY_POINT` enabled.
+
 +   `RTC_DEVICE_PROPERTY_USER_GEOMETRY_SUPPORTED`: Queries whether user
     geometries are supported, which is the case if Embree is compiled
     with `EMBREE_GEOMETRY_USER` enabled.
@@ -115,8 +119,4 @@ returning a boolean value, the return value 0 denotes `false` and 1
 denotes `true`.
 
 On failure zero is returned and an error code is set that can be
-queried using `rtcDeviceGetError`.
-
-#### SEE ALSO
-
-[rtcSetDeviceProperty]
+queried using `rtcGetDeviceError`.
